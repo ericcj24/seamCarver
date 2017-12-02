@@ -38,30 +38,41 @@ public class SeamCarver {
 	   }
 	}
 
-   // current picture
-   public Picture picture() {
-	   return this.pic;
-   }
+	// current picture
+	public Picture picture() {
+		if (isColorMatrixTransposed) {
+			transposeColorMatrix();
+		}
 
-   // width of current picture
-   public int width() {
-	   int width = this.colors[0].length;
-	   int height = this.colors.length;
-	   if (isColorMatrixTransposed) {
-		   width = height;
-	   }
-	   return width;
-   }
+		pic = new Picture(width(), height());
+		for (int r=0; r<colors.length; r++) {
+			for (int c=0; c<colors[0].length; c++) {
+				pic.set(c, r, colors[r][c]);
+			}
+		}
 
-   // height of current picture
-   public int height() {
-	   int width = this.colors[0].length;
-	   int height = this.colors.length;
-	   if (isColorMatrixTransposed) {
-		   height = width;
-	   }
-	   return height;
-   }
+		return this.pic;
+	}
+
+	// width of current picture
+	public int width() {
+		int width = this.colors[0].length;
+	   	int height = this.colors.length;
+	   	if (isColorMatrixTransposed) {
+	   		width = height;
+	   	}
+	   	return width;
+	}
+
+	// height of current picture
+	public int height() {
+		int width = this.colors[0].length;
+		int height = this.colors.length;
+		if (isColorMatrixTransposed) {
+			height = width;
+		}
+		return height;
+	}
 
    // energy of pixel at column x and row y
    public double energy(int x, int y) {
@@ -216,10 +227,16 @@ public class SeamCarver {
 	   if (null == seam) {
 		   throw new java.lang.IllegalArgumentException();
 	   }
-	   if (seam.length != colors[0].length) {
+	   int picWidth = width();
+	   int picHeight = height();
+
+	   if (seam.length != picWidth) {
 		   throw new java.lang.IllegalArgumentException();
 	   }
-	   if (colors.length <= 1) {
+	   if (picHeight <= 1) {
+		   throw new java.lang.IllegalArgumentException();
+	   }
+	   if (isBrokenSeam(seam, picHeight)) {
 		   throw new java.lang.IllegalArgumentException();
 	   }
 
@@ -238,18 +255,44 @@ public class SeamCarver {
 	   }
 
 	   colors = copyAndRemove(seam);
-
+	   cachedEnergy = recalculateCachedEnergy(seam);
    }
 
-   // remove vertical seam from current picture
+   	private boolean isBrokenSeam(int[] seam, int range) {
+   		int cache=seam[0];
+   		boolean flag = false;
+   		for (int i=0; i<seam.length; i++) {
+   			// line is broken
+   			if (Math.abs(seam[i]-cache) > 1) {
+   				flag = true;
+   				break;
+   			}
+   			// outside range
+   			if (seam[i] >= range || seam[i]<0) {
+   				flag = true;
+   				break;
+			}
+			cache = seam[i];
+		}
+   		return flag;
+   	}
+
+   	// remove vertical seam from current picture
    public void removeVerticalSeam(int[] seam) {
 	   if (null == seam) {
 		   throw new java.lang.IllegalArgumentException();
 	   }
-	   if (seam.length != colors.length) {
+
+	   int picWidth = width();
+	   int picHeight = height();
+
+	   if (seam.length != picHeight) {
 		   throw new java.lang.IllegalArgumentException();
 	   }
-	   if (colors[0].length <= 1) {
+	   if (picWidth <= 1) {
+		   throw new java.lang.IllegalArgumentException();
+	   }
+	   if (isBrokenSeam(seam, picWidth)) {
 		   throw new java.lang.IllegalArgumentException();
 	   }
 
@@ -265,8 +308,22 @@ public class SeamCarver {
    }
 
    	private double[][] recalculateCachedEnergy(int[] seam) {
+   		double[][] temp = new double[cachedEnergy.length][cachedEnergy[0].length-1];
+   		int width = temp[0].length;
+   		if (temp[0].length <= 2) {
 
-   		return null;
+   		}
+   		for (int i=0; i<temp.length; i++) {
+   			System.arraycopy(cachedEnergy[i], 0, temp[i], 0, seam[i]-1);
+   			System.arraycopy(cachedEnergy[i], seam[i]+1, temp[i], seam[i], width-1-seam[i]);
+
+   			int recalCol1= seam[i]-1;
+   			int recalCol2= seam[i];
+   			temp[i][recalCol1] = energy(recalCol1, i);
+   			temp[i][recalCol2] = energy(recalCol1, i);
+   		}
+
+   		return temp;
    	}
 
    	private void transposeColorMatrix() {
@@ -300,29 +357,18 @@ public class SeamCarver {
 	   this.isColorMatrixTransposed = !isColorMatrixTransposed;
    }
 
-   private Color[][] copyAndRemove(int[] seam) {
-	   int cache=seam[0];
-	   int width = colors[0].length;
-	   int height = colors.length;
-	   Color[][] temp = new Color[width-1][height];
-	   for (int i =1; i<seam.length ;i++) {
-		   // line is broken
-		   if (seam[i]-cache > 1) {
-			   throw new java.lang.IllegalArgumentException();
-		   }
-			// outside range
-			if (seam[i] >= width || seam[i]<0) {
-				throw new java.lang.IllegalArgumentException();
-			}
-			cache = seam[i];
-
-			if (seam[i] != 0) {
-				System.arraycopy(colors[i], 0, temp, seam[i]-1, seam[i]);
-				System.arraycopy(colors[i], seam[i]+1, temp, seam[i], width-seam[i]-1);
-			} else {
-				System.arraycopy(colors[i], 1, temp, 0, width-1);
-			}
-		}
-		return temp;
+   	private Color[][] copyAndRemove(int[] seam) {
+   		int width = colors[0].length;
+   		int height = colors.length;
+   		Color[][] temp = new Color[height][width-1];
+   		for (int i =0; i<seam.length ;i++) {
+   			if (seam[i] != 0) {
+   				System.arraycopy(colors[i], 0, temp[i], 0, seam[i]);
+   				System.arraycopy(colors[i], seam[i]+1, temp[i], seam[i], width-seam[i]-1);
+   			} else {
+   				System.arraycopy(colors[i], 1, temp[i], 0, width-1);
+   			}
+   		}
+   		return temp;
 	}
 }
