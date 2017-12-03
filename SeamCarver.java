@@ -3,9 +3,9 @@ package com.algorithmsii.week2;
 import java.awt.Color;
 
 import edu.princeton.cs.algs4.Picture;
+import edu.princeton.cs.algs4.Stack;
 
 public class SeamCarver {
-	private Picture pic;
 	private double[][] cachedEnergy;
 	private boolean transposed = false;
 	private boolean isColorMatrixTransposed = false;
@@ -18,13 +18,12 @@ public class SeamCarver {
 		}
 
 		// defensive copy
-		this.pic = new Picture(picture);
-		this.colors = new Color[pic.height()][pic.width()];
-		this.cachedEnergy = new double[pic.height()][pic.width()];
-		initializeCachedEnergy();
+		this.colors = new Color[picture.height()][picture.width()];
+		this.cachedEnergy = new double[picture.height()][picture.width()];
+		initializeCachedEnergy(picture);
 	}
 
-	private void initializeCachedEnergy() {
+	private void initializeCachedEnergy(Picture pic) {
 	   for (int c=0; c<pic.width(); c++) {
 		   for (int r=0; r<pic.height(); r++) {
 			   colors[r][c] = pic.get(c, r);
@@ -44,14 +43,14 @@ public class SeamCarver {
 			transposeColorMatrix();
 		}
 
-		pic = new Picture(width(), height());
+		Picture pic = new Picture(width(), height());
 		for (int r=0; r<colors.length; r++) {
 			for (int c=0; c<colors[0].length; c++) {
 				pic.set(c, r, colors[r][c]);
 			}
 		}
 
-		return this.pic;
+		return pic;
 	}
 
 	// width of current picture
@@ -74,25 +73,37 @@ public class SeamCarver {
 		return height;
 	}
 
-   // energy of pixel at column x and row y
-   public double energy(int x, int y) {
-	   int colorMatrixX = y;
-	   int colorMatrixY = x;
-	   if (isColorMatrixTransposed) {
-		   colorMatrixX = x;
-		   colorMatrixY = colors[0].length - 1 - y;
-	   }
+	// energy of pixel at column x and row y
+	public double energy(int x, int y) {
+		int colorMatrixX = y;
+		int colorMatrixY = x;
+		if (isColorMatrixTransposed) {
+			colorMatrixX = y;
+			colorMatrixY = colors[0].length - 1 - x;
+		}
 
-	   if (colorMatrixX==0 || colorMatrixX==colors.length-1 || colorMatrixY==0 || colorMatrixY==colors[0].length-1) {
-		   return 1000;
-	   }
+		if (isInvalidRange(colorMatrixX, colorMatrixY)) {
+			throw new java.lang.IllegalArgumentException();
+		}
 
-	   double energyXSquared = calcEnergy(colorMatrixX-1, colorMatrixY, colorMatrixX+1, colorMatrixY);
-	   double energyYSquared = calcEnergy(colorMatrixX, colorMatrixY-1, colorMatrixX, colorMatrixY+1);
-	   return Math.sqrt(energyXSquared+energyYSquared);
-   }
+		if (colorMatrixX==0 || colorMatrixX==colors.length-1 || colorMatrixY==0 || colorMatrixY==colors[0].length-1) {
+			return 1000;
+		}
 
-   private double calcEnergy(int x1, int y1, int x2, int y2) {
+		double energyXSquared = calcEnergy(colorMatrixX-1, colorMatrixY, colorMatrixX+1, colorMatrixY);
+		double energyYSquared = calcEnergy(colorMatrixX, colorMatrixY-1, colorMatrixX, colorMatrixY+1);
+		return Math.sqrt(energyXSquared+energyYSquared);
+   	}
+
+   	private boolean isInvalidRange(int x, int y) {
+		boolean flag = false;
+		if (x<0 || x>=colors.length || y<0 || y>= colors[0].length) {
+			flag = true;
+		}
+   		return flag;
+   	}
+
+   	private double calcEnergy(int x1, int y1, int x2, int y2) {
 	   double deltaR = colors[x1][y1].getRed() - colors[x2][y2].getRed();
 	   double deltaG = colors[x1][y1].getGreen() - colors[x2][y2].getGreen();
 	   double deltaB = colors[x1][y1].getBlue() - colors[x2][y2].getBlue();
@@ -101,21 +112,20 @@ public class SeamCarver {
 	   return deltaSquare;
    }
 
-   // sequence of indices for horizontal seam
-   public int[] findHorizontalSeam() {
+   	// sequence of indices for horizontal seam
+   	public int[] findHorizontalSeam() {
+	   	if (!transposed) {
+		   	transpose();
+	   	}
 
-	   if (!transposed) {
-		   transpose();
-	   }
+	   	int[] shortestPath = new int[cachedEnergy.length];
+	   	findVerticalShortestPath(shortestPath);
 
-	   int[] shortestPath = new int[cachedEnergy.length];
-	   findShortestPath(shortestPath);
-
-	   for (int i=0; i<shortestPath.length; i++) {
-		   shortestPath[i] = cachedEnergy[0].length - shortestPath[i] -1;
-	   }
-	   return shortestPath;
-   }
+	   	for (int i=0; i<shortestPath.length; i++) {
+		   	shortestPath[i] = cachedEnergy[0].length - shortestPath[i] -1;
+	   	}
+	   	return shortestPath;
+   	}
 
 
 	// sequence of indices for vertical seam
@@ -125,7 +135,7 @@ public class SeamCarver {
 		}
 
 		int[] shortestPath = new int[cachedEnergy.length];
-		findShortestPath(shortestPath);
+		findVerticalShortestPath(shortestPath);
 		return shortestPath;
 	}
 
@@ -161,19 +171,39 @@ public class SeamCarver {
 		this.transposed = !transposed;
 	}
 
-	private void findShortestPath(int[] shortestPath) {
+	private void findVerticalShortestPath(int[] shortestPath) {
 	   int width = cachedEnergy[0].length;
 	   int height = cachedEnergy.length;
 	   int length = width*height;
 	   double[] distTo = new double[length+1];
+
 	   for (int i=0; i<length+1; i++) {
 		   distTo[i] = Double.POSITIVE_INFINITY;
 	   }
 
 	   int[] edgeTo = new int[length+1];
-	   for (int c = 0; c <width; c++) {
-		   dfs(c, 0, distTo, edgeTo, cachedEnergy[0][c], 0);
+
+	   DepthFirstOrder dfo = new DepthFirstOrder(length, width, height);
+	   // topological order
+	   Stack<Integer> topologicalOrder = dfo.topologicalOrder();
+	   for (int idx : topologicalOrder) {
+		   int r = idx/width;
+		   int c = idx%width;
+
+		   // first row need to initialize
+		   if (r==0) {
+			   distTo[c] = cachedEnergy[r][c];
+			   edgeTo[c] = c;
+		   }
+
+		   // visit all three edges pointed from this vertex
+		   for (int offset =-1; offset <= 1; offset++) {
+			   if (c+offset>=0 && c+offset<width) {
+				   relax(r, c, offset, cachedEnergy[r][c], distTo, edgeTo);
+			   }
+		   }
 	   }
+
 
 	   int runner = edgeTo.length-1;
 	   int shortestPathIdx = shortestPath.length-1;
@@ -181,46 +211,72 @@ public class SeamCarver {
 		   shortestPath[shortestPathIdx--] = edgeTo[runner]%width;
 		   runner = edgeTo[runner];
 	   }
-   }
+	}
 
-   private void dfs(int c, int r, double[] distTo, int[] edgeTo, double prevEnergy, int prevC) {
-	   relax(c, r, distTo, edgeTo, prevEnergy, prevC);
-	   // reached the bottom row, terminate
-	   if (r==cachedEnergy.length) {
-		   return;
-	   }
+	private final class DepthFirstOrder {
+		private boolean[] marked;
+		private Stack<Integer> reversePost;
+		private final int width;
+		private final int height;
+		public DepthFirstOrder(int length, int width, int height) {
+			this.marked = new boolean[length+1];
+			this.reversePost = new Stack<>();
+			this.width = width;
+			this.height = height;
+			int r = 0;
+			for (int c=0; c<width; c++) {
+				dfs(c, r);
+			}
+		}
 
-	   if (c-1>=0) {
-		   dfs(c-1, r+1, distTo, edgeTo, cachedEnergy[r][c], c);
-	   }
-	   dfs(c, r+1, distTo, edgeTo, cachedEnergy[r][c], c);
-	   if (c+1<=cachedEnergy[0].length-1) {
-		   dfs(c+1, r+1, distTo, edgeTo, cachedEnergy[r][c], c);
-	   }
-   }
+		private void dfs(int c, int r) {
+			int idx = c + r*width;
+			marked[idx] = true;
+			if (r+1 != height) {
+				for (int offset =-1; offset <= 1; offset++) {
+					if (c+offset>=0 && c+offset<width) {
+						int newCol = c+offset;
+						int newRow = r+1;
+						int newIdx = newCol + newRow*width;
 
-   private void relax(int c, int r, double[] distTo, int[] edgeTo, double prevEnergy, int prevC) {
-	   int width = cachedEnergy[0].length;
-	   if (r==0) {
-		   distTo[c] = prevEnergy;
-		   edgeTo[c] = c;
-	   } else if (r==cachedEnergy.length) {
-		   // go to last vertex
-		   int idx = r*width;
-		   int prevIdx = prevC + (r-1)*width;
+						if (!marked[newIdx]) {
+							dfs(newCol, newRow);
+						}
+					}
+				}
+			}
+			reversePost.push(idx);
+		}
+
+		public Stack<Integer> topologicalOrder() {
+			return reversePost;
+		}
+
+	}
+
+
+	private void relax(int r, int c, int offset, double prevEnergy, double[] distTo, int[] edgeTo) {
+		int width = cachedEnergy[0].length;
+		int height = cachedEnergy.length;
+		int targetRow = r+1;
+		int targetCol = c+offset;
+		if (r==height-1) {
+			// go to last vertex
+		   int idx = targetRow*width;
+		   int prevIdx = c + r*width;
 		   if (distTo[idx] > distTo[prevIdx] + prevEnergy) {
 			   distTo[idx] = distTo[prevIdx] + prevEnergy;
 			   edgeTo[idx] = prevIdx;
 		   }
-	   } else {
-		   int idx = c+r*width;
-		   int prevIdx = prevC + (r-1)*width;
+		} else {
+		   int idx = targetCol+targetRow*width;
+		   int prevIdx = c + r*width;
 		   if (distTo[idx] > distTo[prevIdx] + prevEnergy) {
 			   distTo[idx] = distTo[prevIdx] + prevEnergy;
 			   edgeTo[idx] = prevIdx;
 		   }
 	   }
-   }
+	}
 
    // remove horizontal seam from current picture
    public void removeHorizontalSeam(int[] seam) {
@@ -311,16 +367,24 @@ public class SeamCarver {
    		double[][] temp = new double[cachedEnergy.length][cachedEnergy[0].length-1];
    		int width = temp[0].length;
    		if (temp[0].length <= 2) {
-
+//TODO
    		}
    		for (int i=0; i<temp.length; i++) {
-   			System.arraycopy(cachedEnergy[i], 0, temp[i], 0, seam[i]-1);
-   			System.arraycopy(cachedEnergy[i], seam[i]+1, temp[i], seam[i], width-1-seam[i]);
+   			if (seam[i]==0) {
+   				System.arraycopy(cachedEnergy[i], 1, temp[i], 0, width-1);
+   			} else if (seam[i]==width) {
+   				System.arraycopy(cachedEnergy[i], 0, temp[i], 0, width-1);
+   			} else {
+   				System.arraycopy(cachedEnergy[i], 0, temp[i], 0, seam[i]-1);
+   				System.arraycopy(cachedEnergy[i], seam[i]+1, temp[i], seam[i], width-1-seam[i]);
 
-   			int recalCol1= seam[i]-1;
-   			int recalCol2= seam[i];
-   			temp[i][recalCol1] = energy(recalCol1, i);
-   			temp[i][recalCol2] = energy(recalCol1, i);
+   				int recalCol1= seam[i]-1;
+   	   			int recalCol2= seam[i];
+   	   			temp[i][recalCol1] = energy(recalCol1, i);
+   	   			temp[i][recalCol2] = energy(recalCol1, i);
+   			}
+
+
    		}
 
    		return temp;
